@@ -2,12 +2,12 @@
 Strange way to invoke a kernel NULL pointer dereference, but what can one do?
 Root is needed to set up the chroot and the permissions on directory. In case
 you can trigger the vuln in the kernel any other way, please contact me.
+
 Unfortunately I could not exploit this vuln, I found no way to overwrite a 
 function pointer or call a controlled offset, so there it is published.
 Good practice and fun to have it working, but with this triggering method does
 not count as a kernel exploit because you need root to set up the env :)
 And it works on the newest release as well. v4.0.6
-chroot <at.> rycon <d.ot> hu - @xoreipeip
 
 # uname -a
 DragonFly  3.8-RELEASE DragonFly v3.8.2.13.gaffba-RELEASE #0: Wed Sep 17 
@@ -18,6 +18,22 @@ _cache_hold (ncp=0x4141414141414141) at /usr/src/sys/kern/vfs_cache.c:714
 714		atomic_add_int(&ncp->nc_refs, 1);
 (kgdb)
 
+  446 int
+  447 nlookup(struct nlookupdata *nd)
+  448 {
+...
+
+  600                 while (nctmp.ncp == nctmp.mount->mnt_ncmountpt.ncp)
+  601                         nctmp = nctmp.mount->mnt_ncmounton;
+  602                 nctmp.ncp = nctmp.ncp->nc_parent;
+...
+nctmp.ncp will be NULL, that causes the dereference in the next round of
+nlookup().
+Good luck!
+Fix: https://github.com/DragonFlyBSD/DragonFlyBSD/commit/20648721706d13ccb5deaacccaae2eca861b93db
+
+Balazs Bucsay
+chroot <at.> rycon <d.ot> hu - @xoreipeip
 */
 
 
