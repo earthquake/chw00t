@@ -14,7 +14,7 @@ int main()
 #if __OpenBSD__
 	printf("OpenBSD\n");
 #endif
-#if __DragonflyBSD__
+#if __DragonFly__
 	printf("DragonflyBSD\n");
 #endif
 #if __NetBSD__
