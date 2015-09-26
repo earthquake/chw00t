@@ -29,7 +29,7 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <sys/user.h>
-#if __OpenBSD__
+#if __OpenBSD__ || __DragonFly__
 #include <machine/reg.h>
 #endif
 
@@ -40,7 +40,7 @@
 #define PTRACE_GETREGS PT_GETREGS
 #define PTRACE_POKEDATA PT_WRITE_D
 #endif
-#if __FreeBSD__ || __OpenBSD__
+#if __FreeBSD__ || __OpenBSD__ || __DragonFly__
 #define X86_SHELLCODE_LEN 73
 #define X86_SHELLCODE_PORT1 6
 #define X86_SHELLCODE_PORT2 7
@@ -246,28 +246,28 @@ void usage(char *tool)
 #if !__FreeBSD__ && !__OpenBSD__
 	"    -0\tClassic\n"
 #endif
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__
 	"    -1\tClassic with saved file descriptor\n"
 #endif
 #if !__OpenBSD__
 	"    -2\tUnix domain socket\n"
 #endif
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__ && \
 	!__APPLE__
 	"    -3\tMount /proc\n"
 #endif
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__ && \
 	!__APPLE__ && !__sun
 	"    -4\tMake block device (mknod)\n"
 #endif
 	"    -5\tMove out of chroot (nested)\n"
-#if !__APPLE__ && !__sun
+#if !__APPLE__ && !__sun && __DragonFly__
 	"    -6\tPtrace x32 for 32bit processes\n"
 #if __x86_64__
 	"    -7\tPtrace x64 for 64bit processes\n"
 #endif
 #endif
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__
 	"    -9\tOpen filedescriptor (demo purposes)\n"
 #endif
 	"\n"
@@ -349,7 +349,7 @@ int classic(char *dir) {
 }
 #endif
 
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__
 int classicfd(char *dir) {
     int err, i, fd;
     struct stat dirstat;
@@ -479,8 +479,8 @@ int uds(char *dir)
         addr.sun_family = AF_UNIX;
         snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", SOCKETNAME);
 	// seting abstract named socket here, to be accessible from chroot
+#if !__FreeBSD__ && !__DragonFly__
 	// could be standard uds as well, just putting it under the new chroot
-#if !__FreeBSD__
 	addr.sun_path[0] = 0;
 #endif
 
@@ -558,7 +558,7 @@ int uds(char *dir)
 	memset(&addr, 0, sizeof(struct sockaddr_un));
 	addr.sun_family = AF_UNIX;
 	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/%s", dir, SOCKETNAME);
-#if !__FreeBSD__
+#if !__FreeBSD__ && !__DragonFly__
 	addr.sun_path[0] = 0;
 #endif
 
@@ -603,7 +603,7 @@ int uds(char *dir)
 }
 #endif
 
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__ && \
         !__APPLE__
 int mountproc(char *dir) 
 {
@@ -703,7 +703,7 @@ int mountproc(char *dir)
 }
 #endif
 
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__ && \
         !__APPLE__ && !__sun
 int makeblockdevice(char *devdir, char *mountdir)
 {
@@ -1119,7 +1119,7 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
     descriptors, the process can break out the chroot. This should be 
     implemented as a shellcode.
 */
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__
 int fddemo(char *dir)
 {
     DIR *dird, *dird2;
@@ -1320,7 +1320,7 @@ int main(int argc, char **argv)
                 printf("[-] Missing argument: --dir\n\n");
             break;
 #endif
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__
         case 1:
             if (dir1_arg)
 		return classicfd(dir1_arg);
@@ -1336,7 +1336,7 @@ int main(int argc, char **argv)
                 printf("[-] Missing argument: --dir\n\n");
             break;
 #endif
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__ && \
         !__APPLE__
         case 3:
             if (dir1_arg)
@@ -1345,7 +1345,7 @@ int main(int argc, char **argv)
                 printf("[-] Missing argument: --dir\n\n");
             break;
 #endif
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__ && \
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__ && \
         !__APPLE__ && !__sun
         case 4:
             if (dir1_arg && dir3_arg)
@@ -1360,7 +1360,7 @@ int main(int argc, char **argv)
             else
                 printf("[-] Missing argument: --dir or --nestdir or --tempdir\n\n");
             break;
-#if !__APPLE__ && !__sun
+#if !__APPLE__ && !__sun && !__DragonFly__
         case 6:
             return ptracepid(pid_arg, 0, port_arg);
             break;
@@ -1370,7 +1370,7 @@ int main(int argc, char **argv)
             break; 
 #endif
 #endif
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonflyBSD__
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__
         case 9:
             if (dir1_arg)
 		return fddemo(dir1_arg);
