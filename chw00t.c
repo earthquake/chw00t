@@ -267,7 +267,7 @@ void usage(char *tool)
 	"    -7\tPtrace x64 for 64bit processes\n"
 #endif
 #endif
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__
+#if __linux__
 	"    -9\tOpen filedescriptor (demo purposes)\n"
 #endif
 	"\n"
@@ -479,7 +479,7 @@ int uds(char *dir)
         addr.sun_family = AF_UNIX;
         snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", SOCKETNAME);
 	// seting abstract named socket here, to be accessible from chroot
-#if !__FreeBSD__ && !__DragonFly__
+#if !__FreeBSD__ && !__DragonFly__ && !__APPLE__
 	// could be standard uds as well, just putting it under the new chroot
 	addr.sun_path[0] = 0;
 #endif
@@ -558,7 +558,7 @@ int uds(char *dir)
 	memset(&addr, 0, sizeof(struct sockaddr_un));
 	addr.sun_family = AF_UNIX;
 	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/%s", dir, SOCKETNAME);
-#if !__FreeBSD__ && !__DragonFly__
+#if !__FreeBSD__ && !__DragonFly__ && !__APPLE__
 	addr.sun_path[0] = 0;
 #endif
 
@@ -1119,7 +1119,7 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
     descriptors, the process can break out the chroot. This should be 
     implemented as a shellcode.
 */
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__
+#if __linux__
 int fddemo(char *dir)
 {
     DIR *dird, *dird2;
@@ -1370,7 +1370,7 @@ int main(int argc, char **argv)
             break; 
 #endif
 #endif
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__
+#if __linux__
         case 9:
             if (dir1_arg)
 		return fddemo(dir1_arg);
