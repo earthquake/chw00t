@@ -1,4 +1,4 @@
-w00t: chroot escape tool
+#chw00t: chroot escape tool
 ## What’s this tool?
 This tool can help you escape from chroot environments. Even though chroot is not a security feature in any Unix systems, it is misused in a lot of setups. With this tool there is a chance that you can bypass this barrier.
 
