@@ -59,10 +59,12 @@ The tool tries to mount proofs into a directory than crawls all the processes fo
 
 ### -4 Mount root again
 >Root privilege: NEEDED
+
 ```sh
 WARNING: this feature can be dangerous on live systems, because it mounts
 the root partition twice!
 ```
+
 The tool crawls for all the possible block devices that can have useful data on it and tries to mount it. Hopefully the root partition is found and can be mounted.
 
 * **Bypasses:** Linux
@@ -73,8 +75,8 @@ The tool crawls for all the possible block devices that can have useful data on 
 This technique was found by me, pretty easy and can be used without shell access (e.g. FTP, SCP, etc.).  
 The tool creates a directory then forks. The child process cd’ing into the new directory and calls the chroot() syscall. Now it has two separated chroots under each other. The child process creates a new directory under the child root barrier and cd’ing into that again. The parent process moves out the child CWD, above the child root barrier, then the child process escaped.
 
-Remember? Linux and some others stores the properties in a struct. FreeBSD does store it in the linked list, so the child only escapes the child root barrier, but the parent root barrier. The tool does not leave the original chroot, but could leave it by external help from the original system by moving that directory above of the parent root barrier.  
-OpenBSD does not let to chroot() after escaping the root barrier, but filesystem operations are allowed (reading files, listing directories).
+Remember? Linux and some others stores the properties in a struct. **FreeBSD** does store it in the linked list, so the child only escapes the child root barrier, but the parent root barrier. The tool does not leave the original chroot, but could leave it by external help from the original system by moving that directory above of the parent root barrier.  
+**OpenBSD** does not let to chroot() after escaping the root barrier, but filesystem operations are allowed (reading files, listing directories).
 
 * **Bypasses:** Linux, OpenBSD, Solaris, Mac OS X
 * **Partly bypasses:** FreeBSD (chroot and jail)
