@@ -126,7 +126,7 @@ char *shells[] = {"/bin/bash", "/bin/sh", "/bin/dash", "/bin/ksh",
         "/bin/ksh", "/usr/bin/csh", "/usr/bin/dash",
         "/usr/bin/zsh" };
 
-#if !__OpenBSD__
+#if !__OpenBSD__ && !__NetBSD__
 int send_fd(int sock, const int fd)
 {
     struct {
@@ -279,7 +279,7 @@ int movetotheroot()
 
     return 0;
 }
-#if !__FreeBSD__ && !__OpenBSD__
+#if !__FreeBSD__ && !__OpenBSD__ && !__NetBSD__
 int classic(char *dir) {
     int err, i;
     struct stat dirstat;
@@ -336,7 +336,7 @@ int classic(char *dir) {
 }
 #endif
 
-#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__
+#if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__ && !__NetBSD__
 int classicfd(char *dir) {
     int err, i, fd;
     struct stat dirstat;
@@ -413,7 +413,7 @@ int classicfd(char *dir) {
 }
 #endif
 
-#if !__OpenBSD__
+#if !__OpenBSD__ && !__NetBSD__
 int uds(char *dir) 
 {
     int err, i, fd, fd2, socket_fd, connection_fd;
@@ -603,7 +603,7 @@ int uds(char *dir)
 #endif
 
 #if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__ && \
-        !__APPLE__
+        !__APPLE__ && !__NetBSD__
 int mountproc(char *dir) 
 {
     int err, i, fd;
@@ -718,7 +718,7 @@ int mountproc(char *dir)
 #endif
 
 #if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__ && \
-        !__APPLE__ && !__sun
+        !__APPLE__ && !__sun && !__NetBSD__
 int makeblockdevice(char *devdir, char *mountdir)
 {
     int err, i, j, h, fd;
@@ -834,7 +834,7 @@ int makeblockdevice(char *devdir, char *mountdir)
 }
 #endif
 
-#if !__APPLE__ && !__sun
+#if !__APPLE__ && !__sun && !__NetBSD__
 int ptracepid(unsigned long long pid, int x64, unsigned int port) 
 {
     pid_t traced_process;
@@ -1018,6 +1018,7 @@ int ptracepid(unsigned long long pid, int x64, unsigned int port)
 }
 #endif
 
+#if !__NetBSD__
 int moveooc(char *chrootdir, char *nesteddir, char *newdir) 
 {
     int err, i, size;
@@ -1129,6 +1130,7 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
 
     return 0;
 }
+#endif
 
 /*
     This one is only for demo purposes. Looks like identical as the classicfd()
