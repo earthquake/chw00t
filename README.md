@@ -60,7 +60,8 @@ The tool tries to mount proofs into a directory than crawls all the processes fo
 ### -4 Mount root again
 >Root privilege: NEEDED
 ```sh
-WARNING: this feature can be dangerous on live systems, because it mounts the root partition twice!
+WARNING: this feature can be dangerous on live systems, because it mounts
+the root partition twice!
 ```
 The tool crawls for all the possible block devices that can have useful data on it and tries to mount it. Hopefully the root partition is found and can be mounted.
 
