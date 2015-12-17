@@ -137,7 +137,6 @@ int send_fd(int sock, const int fd)
     char nothing = '!';
     struct iovec nothing_ptr;
     struct cmsghdr *cmsg;
-    int i;
 
     nothing_ptr.iov_base = &nothing;
     nothing_ptr.iov_len = 1;
@@ -166,7 +165,6 @@ int recv_fd(int sock, int *fd)
     char nothing;
     struct iovec nothing_ptr;
     struct cmsghdr *cmsg;
-    int i;
 
     nothing_ptr.iov_base = &nothing;
     nothing_ptr.iov_len = 1;
@@ -338,7 +336,7 @@ int classic(char *dir) {
 
 #if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__ && !__NetBSD__
 int classicfd(char *dir) {
-    int err, i, fd;
+    int err, i;
     struct stat dirstat;
     DIR *dird;
     
@@ -606,7 +604,7 @@ int uds(char *dir)
         !__APPLE__ && !__NetBSD__
 int mountproc(char *dir) 
 {
-    int err, i, fd;
+    int err, i;
     pid_t pid;
     struct stat ownstat, otherstat;
     DIR *dird;
@@ -721,10 +719,8 @@ int mountproc(char *dir)
         !__APPLE__ && !__sun && !__NetBSD__
 int makeblockdevice(char *devdir, char *mountdir)
 {
-    int err, i, j, h, fd;
+    int err, i, j, h;
     struct stat dirstat;
-    DIR *dird;
-    struct dirent *pdirent;
     char *shellname = NULL, *devname = NULL;
     char *filesystems[] = {"ext4", "ext3", "ext2", "zfs",
 	    "ufs", "ufs2" };
@@ -1142,7 +1138,7 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
 #if __linux__
 int fddemo(char *dir)
 {
-    DIR *dird, *dird2;
+    DIR *dird;
     int size, i, fd, err;
     struct stat fdstat;
 
