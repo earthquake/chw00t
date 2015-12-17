@@ -665,7 +665,6 @@ int mountproc(char *dir)
 
     while ((pdirent = readdir(dird)) != NULL)
     {
-	i = 12 + strlen(pdirent->d_name);
 	if ((rootname = realloc(rootname, 
 	    8+strlen(dir)+strlen(pdirent->d_name))) == NULL)
 	{
