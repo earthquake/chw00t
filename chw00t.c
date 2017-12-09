@@ -37,7 +37,9 @@
 #include <fcntl.h>
 #include <netdb.h>
 #include <sys/user.h>
+#if __linux__
 #include <sys/mount.h>
+#endif
 #if __OpenBSD__ || __DragonFly__
 #include <machine/reg.h>
 #endif
