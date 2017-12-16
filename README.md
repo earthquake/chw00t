@@ -95,5 +95,11 @@ Most fun technique ever. With the ptrace() syscall the tool attaches on a specif
 
 This feature is mostly for demo purposes. In case the attacker exploits a buffer overflow vulnerability to achieve remote code execution and that exploitable process is chrooted in a bad way, there can be some open file descriptors in the FD table that point out to directories above the root barrier. This feature tries to reveal that possibility. This is almost the same as the Classic FD and UDS technique.
 
+## How to compile the source
+Most probably you want to use the tool on a chrooted environment, where no libraries/shared objects (or just a few of them) will be installed. In this case it is better to compile the tool as static:
+\# gcc chw00t.c -o chw00t -static
+
+If you are planning to compile it on solaris, you should link the socket library as well:
+\# gcc chw00t.c -o chw00t -static -lsocket
 
 
