@@ -39,6 +39,7 @@
 #include <sys/user.h>
 #if __linux__
 #include <sys/mount.h>
+#include <sys/sysmacros.h>
 #endif
 #if __OpenBSD__ || __DragonFly__
 #include <machine/reg.h>
@@ -285,7 +286,6 @@ int classic(char *dir) {
     int err, i;
     struct stat dirstat;
     
-    printf("clssic\n");
     if ((err = stat(dir, &dirstat)) == 0) 
     {
 	printf("[-] %s exists, please remove\n", dir);
