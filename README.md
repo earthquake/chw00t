@@ -53,7 +53,7 @@ The technique **does not work** at the moment on **OpenBSD** because of some mys
 ### -3 Procfs magic
 >Root privilege: NEEDED
 
-The tool tries to mount proofs into a directory than crawls all the processes for a root or cwd entry. 
+The tool tries to mount procfs into a directory than crawls all the processes for a root or cwd entry. 
 
 * **Bypasses:** Linux, Solaris
 
